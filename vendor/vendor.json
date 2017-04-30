@@ -1,0 +1,43 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "JEWvU7bHegBmHqEDjUgcnAUtOXg=",
+			"path": "github.com/cloudfoundry/gosigar",
+			"revision": "dfaa4d491586af21e1ce06028df3926389a99654",
+			"revisionTime": "2016-12-16T20:42:13Z"
+		},
+		{
+			"checksumSHA1": "1kVa89e/yk8L2liYiFuJrNWiXfU=",
+			"path": "github.com/influxdata/influxdb/client/v2",
+			"revision": "8655042b122a6372d0b37c810773cdb5e34e95ed",
+			"revisionTime": "2017-04-28T22:07:40Z"
+		},
+		{
+			"checksumSHA1": "0uQnt7Jef7r5X2JvP9/cIoyxXTo=",
+			"path": "github.com/influxdata/influxdb/models",
+			"revision": "8655042b122a6372d0b37c810773cdb5e34e95ed",
+			"revisionTime": "2017-04-28T22:07:40Z"
+		},
+		{
+			"checksumSHA1": "H/J/qLqzUONXIecHHKtVZmxJZZA=",
+			"path": "github.com/influxdata/influxdb/pkg/escape",
+			"revision": "8655042b122a6372d0b37c810773cdb5e34e95ed",
+			"revisionTime": "2017-04-28T22:07:40Z"
+		},
+		{
+			"checksumSHA1": "fabVNshbE6WKqfO9/ymL8JGFq+k=",
+			"path": "github.com/sirupsen/logrus",
+			"revision": "10f801ebc38b33738c9d17d50860f484a0988ff5",
+			"revisionTime": "2017-03-17T14:32:14Z"
+		},
+		{
+			"checksumSHA1": "/oZpHfYc+ZgOwYAhlvcMhmETYpw=",
+			"path": "golang.org/x/sys/unix",
+			"revision": "99f16d856c9836c42d24e7ab64ea72916925fa97",
+			"revisionTime": "2017-03-08T15:04:45Z"
+		}
+	],
+	"rootPath": "github.com/ottenwbe/sysinfo_influxdb"
+}
