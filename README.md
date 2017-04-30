@@ -1,5 +1,7 @@
 # influxdb_reporter
 
+[![Build Status](https://travis-ci.org/ottenwbe/influxdb_reporter.svg?branch=master)](https://travis-ci.org/ottenwbe/influxdb_reporter)
+
 A tool for collecting system metrics (CPU, memory, load, disks I/Os, network traffic) and reporting them to an [InfluxDB](http://influxdb.org) server.
 
 This project mainly relies on [gosigar](https://github.com/cloudfoundry/gosigar/), so it's compatible with GNU/Linux and MacOS systems, but not with Windows.
