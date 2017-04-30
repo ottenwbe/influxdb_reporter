@@ -1,51 +1,64 @@
 # influxdb_reporter
 
-This is an adaptation of [sysinfo_influxdb](https://github.com/novaquark/sysinfo_influxdb), which has been licenced under the Creative Commons Zero v1.0 Universal.
-
-
 A tool for collecting system metrics (CPU, memory, load, disks I/Os, network traffic) and reporting them to an [InfluxDB](http://influxdb.org) server.
 
-This project mainly relies on [gosigar](https://github.com/cloudfoundry/gosigar/), so it's compatible with GNU/Linux and MacOS system, but not with Windows yet.
+This project mainly relies on [gosigar](https://github.com/cloudfoundry/gosigar/), so it's compatible with GNU/Linux and MacOS systems, but not with Windows.
 
-## Release
+## Original source
 
-You can download the lastest version for amd64/x86/arm on [gobuild website](http://gobuild.io/github.com/novaquark/sysinfo_influxdb?tag=branch:master).
+This is a fork of [sysinfo_influxdb](https://github.com/novaquark/sysinfo_influxdb), which has been licenced under the Creative Commons Zero v1.0 Universal license.
+This fork is used to personalize this project for my usecase.
+
+## Install ##
+
+1. Ensure that [Go](https://golang.org/doc/install) is installed and the [GOPATH](https://golang.org/doc/code.html) is set. 
+Moreover, we assume that `$GOPATH/bin` is in your `PATH`.
+
+1. Go build the executable in `${GOPATH}/bin`:
+    
+    ```bash    
+    go get github.com/ottenwbe/influxdb_reporter
+    ```
+1. Now you can execute the application by typing: 
+
+    ```bash    
+    golook --help
 
 ## Usage sample
 
-To display all metrics without sending them to a server :
+To display all metrics once without sending them to a server :
 
-    $GOPATH/bin/sysinfo_influxdb
+    influxdb_reporter
 
-To send metric to an InfluxDB server, only one time :
+To send metrics to an InfluxDB server, only once:
 
-    $GOPATH/bin/sysinfo_influxdb -h localhost:8086 -u root -p secret -d database
+    influxdb_reporter -h localhost:8086 -u root -p secret -d database
 
-Password can also be read from a file if you don't want to specify it in CLI (`-p` is ignored if specified with `-s`) :
+The password can also be read from a file if you don't want to specify it via the CLI (`-p` is ignored if specified with `-s`) :
 
-    $GOPATH/bin/sysinfo_influxdb -h localhost:8086 -u root -s /etc/sysinfo.secret -d database
+    influxdb_reporter -h localhost:8086 -u root -s /etc/sysinfo.secret -d database
 
 You can ommit `-h`, `-u`, `-p` or `-s` if you use default settings.
 
-To run in daemon mode (doesn't fork, just loop), use the `-D` option :
+To run in daemon mode (doesn't fork, just loop), use the `-D` option:
 
-    $GOPATH/bin/sysinfo_influxdb -D
+    influxdb_reporter -D
 
-To display data even if you send them to a server, use `-v` :
+To display data even if you send them to a server, use `-v`:
 
-    $GOPATH/bin/sysinfo_influxdb -D -h localhost:8086 -d database -v
+    influxdb_reporter -D -h localhost:8086 -d database -v
 
-Use the `-i` option to change the collect interval; this option preserves the consistency of quantities displayed or sent (CPUs, network or disks I/Os) : so you can store in the same table the amount of outgoing packets in 1 minute to the same amount outgoing in 1 second (use `-C` option to alter the consistency factor). For example, to collect statistics each minute :
+Use the `-i` option to change the collection interval; this option preserves the consistency of quantities displayed or sent (CPUs, network, or disks I/Os): so you can store in the same table the amount of outgoing packets in 1 minute to the same amount outgoing in 1 second (use the `-C` option to alter the consistency factor). For example, to collect statistics each minute :
 
-    $GOPATH/bin/sysinfo_influxdb -i 1m
+    influxdb_reporter -i 1m
 
 To change data collected, use the `-c` option with one or more metrics type (`cpu`, `cpus`, `mem`, `swap`, `uptime`, `load`, `network`, `disks`, `mounts`) like this :
 
-    $GOPATH/bin/sysinfo_influxdb -c cpus # Collect only CPUs related statistics by CPU core
-    $GOPATH/bin/sysinfo_influxdb -c load,cpu,disks # Collect load average, global CPU and disks I/Os statistics
-    $GOPATH/bin/sysinfo_influxdb -c mem,mounts # Collect memory metrics and local filesystems usage
+    influxdb_reporter -c cpus # Collect only CPU related statistics by CPU core
+    influxdb_reporter -c load,cpu,disks # Collect load average, global CPU and disks I/Os statistics
+    influxdb_reporter -c mem,mounts # Collect memory metrics and local filesystems usage
 
-On Linux hardened kernel, you must be allowed to read `/proc/net/dev` in order to collect networking statistics.
+On a Linux hardened kernel, you must be allowed to read `/proc/net/dev` in order to collect networking statistics.
 
 ## Sample outputs
 
@@ -317,29 +330,3 @@ On Linux hardened kernel, you must be allowed to read `/proc/net/dev` in order t
 	    }
 	  }
 	]
-
-
-## Building
-
-	cd $GOPATH
-	mkdir -p src/github.com/novaquark/
-	cd src/github.com/novaquark/
-	git clone https://github.com/novaquark/sysinfo_influxdb.git
-	cd sysinfo_influxdb
-	go get
-	go install
-
-<p xmlns:dct="http://purl.org/dc/terms/">
-  <a rel="license"
-     href="http://creativecommons.org/publicdomain/zero/1.0/">
-    <img src="http://i.creativecommons.org/p/zero/1.0/88x31.png" style="border-style: none;" alt="CC0" />
-  </a>
-  <br />
-  To the extent possible under law,
-  <a rel="dct:publisher"
-     href="https://github.com/orgs/novaquark">
-    <span property="dct:title">Novaquark</span></a>
-  has waived all copyright and related or neighboring rights to
-  this work.
-</p>
->>>>>>> origin/master
