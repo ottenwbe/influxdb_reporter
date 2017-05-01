@@ -1,6 +1,4 @@
 /*
-MIT License
-
 Copyright (c) 2017 Beate Ottenwälder
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -29,7 +27,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/cloudfoundry/gosigar"
-	influxClient "github.com/influxdata/influxdb/client/v2"
+	influx "github.com/influxdata/influxdb/client/v2"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/url"
@@ -43,14 +41,16 @@ import (
 	"time"
 )
 
-type chan_ret_t struct {
-	series []*influxClient.Point
-	err    error
+type collectionResult struct {
+	point []*influx.Point
+	err   error
 }
 
-const APP_VERSION = "0.6.0"
+type collectionFunc func(chan collectionResult)
 
 // Variables storing arguments flags
+const applicationVersion = "0.6.0-alpha"
+
 var verboseFlag bool
 var versionFlag bool
 var daemonFlag bool
@@ -58,14 +58,15 @@ var daemonIntervalFlag time.Duration
 var daemonConsistencyFlag time.Duration
 var consistencyFactor = 1.0
 var collectFlag string
-var pidFile string
 
+var pidFile string
 var sslFlag bool
 var hostFlag string
 var usernameFlag string
 var passwordFlag string
 var secretFlag string
 var databaseFlag string
+
 var retentionPolicyFlag string
 
 func init() {
@@ -107,14 +108,14 @@ func main() {
 	flag.Parse() // Scan the arguments list
 
 	if versionFlag {
-		fmt.Println("Version:", APP_VERSION)
+		fmt.Println("Version:", applicationVersion)
 		return
 	}
 
 	if pidFile != "" {
 		pid := strconv.Itoa(os.Getpid())
 		if err := ioutil.WriteFile(pidFile, []byte(pid), 0644); err != nil {
-			log.WithError(err).Panic(os.Stderr, "Unable to create pidfile\n")
+			log.WithError(err).Panic("Unable to create pidfile\n")
 		}
 	}
 
@@ -123,24 +124,24 @@ func main() {
 	}
 
 	// Fill InfluxDB connection settings
-	client := newClient()
+	dbClient := newDBClient()
 
 	// Build collect list
 	collectList := buildCollectionList()
 
-	collectionLoop(collectList, client)
+	collectionLoop(collectList, dbClient)
 
 }
 
-func collectionLoop(collectList []GatherFunc, client influxClient.Client) {
-	ch := make(chan chan_ret_t, len(collectList))
+func collectionLoop(collectList []collectionFunc, client influx.Client) {
+	ch := make(chan collectionResult, len(collectList))
 	// Without daemon mode, do at least one lap
 	first := true
 	for first || daemonFlag {
 		first = false
 
 		// Collect data
-		var data []*influxClient.Point
+		var data []*influx.Point
 
 		for _, cl := range collectList {
 			go cl(ch)
@@ -150,8 +151,8 @@ func collectionLoop(collectList []GatherFunc, client influxClient.Client) {
 			res := <-ch
 			if res.err != nil {
 				log.WithError(res.err).Error("Error collecting points.")
-			} else if len(res.series) > 0 {
-				for _, v := range res.series {
+			} else if len(res.point) > 0 {
+				for _, v := range res.point {
 					if v != nil {
 						data = append(data, v)
 					} else {
@@ -189,8 +190,8 @@ func collectionLoop(collectList []GatherFunc, client influxClient.Client) {
 	}
 }
 
-func newClient() influxClient.Client {
-	var client influxClient.Client = nil
+func newDBClient() influx.Client {
+	var client influx.Client
 	if databaseFlag != "" {
 		var proto string
 		if sslFlag {
@@ -199,7 +200,7 @@ func newClient() influxClient.Client {
 			proto = "http"
 		}
 		var u, _ = url.Parse(fmt.Sprintf("%s://%s/", proto, hostFlag))
-		config := influxClient.HTTPConfig{Addr: u.String(), Username: usernameFlag, UserAgent: "sysinfo_influxdb v" + APP_VERSION}
+		config := influx.HTTPConfig{Addr: u.String(), Username: usernameFlag, UserAgent: "sysinfo_influxdb v" + applicationVersion}
 
 		// use secret file if present, fallback to CLI password arg
 		if secretFlag != "" {
@@ -213,7 +214,7 @@ func newClient() influxClient.Client {
 		}
 
 		var err error
-		client, err = influxClient.NewHTTPClient(config)
+		client, err = influx.NewHTTPClient(config)
 		if err != nil {
 			log.Panic(err)
 		}
@@ -228,8 +229,12 @@ func newClient() influxClient.Client {
 	return client
 }
 
-func buildCollectionList() []GatherFunc {
-	var collectList []GatherFunc
+/**
+ * Interactions with InfluxDB
+ */
+
+func buildCollectionList() []collectionFunc {
+	var collectList []collectionFunc
 	for _, c := range strings.Split(collectFlag, ",") {
 		switch strings.Trim(c, " ") {
 		case "cpu":
@@ -259,12 +264,12 @@ func buildCollectionList() []GatherFunc {
 }
 
 /**
- * Interactions with InfluxDB
+ * Diff function
  */
 
-func send(client influxClient.Client, series []*influxClient.Point) error {
-	c := influxClient.BatchPointsConfig{Database: databaseFlag, RetentionPolicy: retentionPolicyFlag}
-	w, _ := influxClient.NewBatchPoints(c)
+func send(client influx.Client, series []*influx.Point) error {
+	c := influx.BatchPointsConfig{Database: databaseFlag, RetentionPolicy: retentionPolicyFlag}
+	w, _ := influx.NewBatchPoints(c)
 
 	w.AddPoints(series)
 
@@ -272,50 +277,46 @@ func send(client influxClient.Client, series []*influxClient.Point) error {
 	return err
 }
 
-/**
- * Diff function
- */
-
 var (
-	mutex       sync.Mutex
-	last_series = make(map[string]map[string]interface{})
+	mutex      sync.Mutex
+	lastSeries = make(map[string]map[string]interface{})
 )
 
-func DiffFromLast(serie *influxClient.Point) *influxClient.Point {
+func diffFromLast(point *influx.Point) *influx.Point {
 	mutex.Lock()
 	defer mutex.Unlock()
 	notComplete := false
 
 	var keys []string
 
-	for k := range serie.Tags() {
+	for k := range point.Tags() {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
-	key := serie.Name() + "#"
+	key := point.Name() + "#"
 	for _, k := range keys {
-		key += k + ":" + serie.Tags()[k] + "|"
+		key += k + ":" + point.Tags()[k] + "|"
 	}
 
-	if _, ok := last_series[key]; !ok {
-		last_series[key] = make(map[string]interface{})
+	if _, ok := lastSeries[key]; !ok {
+		lastSeries[key] = make(map[string]interface{})
 	}
 
-	fields, err := serie.Fields()
+	fields, err := point.Fields()
 	if err != nil {
-		log.WithError(err).Error("Cannot read fields")
+		log.WithError(err).Error("Cannot read fields.")
 	}
 
 	for i := range fields {
 		var val interface{}
 		var ok bool
-		if val, ok = last_series[key][i]; !ok {
+		if val, ok = lastSeries[key][i]; !ok {
 			notComplete = true
-			last_series[key][i] = fields[i]
+			lastSeries[key][i] = fields[i]
 			continue
 		} else {
-			last_series[key][i] = fields[i]
+			lastSeries[key][i] = fields[i]
 		}
 
 		switch fields[i].(type) {
@@ -344,17 +345,15 @@ func DiffFromLast(serie *influxClient.Point) *influxClient.Point {
 
 	if notComplete {
 		return nil
-	} else {
-		return serie
-	}
+	} /*else*/
+	return point
+
 }
 
-type GatherFunc func(chan chan_ret_t)
-
-func cpu(ch chan chan_ret_t) {
+func cpu(ch chan collectionResult) {
 	cpu := sigar.Cpu{}
 	if err := cpu.Get(); err != nil {
-		ch <- chan_ret_t{nil, err}
+		ch <- collectionResult{nil, err}
 		return
 	}
 
@@ -373,15 +372,15 @@ func cpu(ch chan chan_ret_t) {
 		},
 	)
 
-	ch <- chan_ret_t{[]*influxClient.Point{DiffFromLast(series)}, nil}
+	ch <- collectionResult{[]*influx.Point{diffFromLast(series)}, nil}
 }
 
 /**
  * Gathering functions
  */
 
-func cpus(ch chan chan_ret_t) {
-	var series []*influxClient.Point
+func cpus(ch chan collectionResult) {
+	var series []*influx.Point
 
 	cpus := sigar.CpuList{}
 	cpus.Get()
@@ -401,18 +400,18 @@ func cpus(ch chan chan_ret_t) {
 			},
 		)
 
-		if serie = DiffFromLast(serie); serie != nil {
+		if serie = diffFromLast(serie); serie != nil {
 			series = append(series, serie)
 		}
 	}
 
-	ch <- chan_ret_t{series, nil}
+	ch <- collectionResult{series, nil}
 }
 
-func mem(ch chan chan_ret_t) {
+func mem(ch chan collectionResult) {
 	mem := sigar.Mem{}
 	if err := mem.Get(); err != nil {
-		ch <- chan_ret_t{nil, err}
+		ch <- collectionResult{nil, err}
 	}
 
 	series := newPoint(
@@ -427,13 +426,13 @@ func mem(ch chan chan_ret_t) {
 		},
 	)
 
-	ch <- chan_ret_t{[]*influxClient.Point{series}, nil}
+	ch <- collectionResult{[]*influx.Point{series}, nil}
 }
 
-func swap(ch chan chan_ret_t) {
+func swap(ch chan collectionResult) {
 	swap := sigar.Swap{}
 	if err := swap.Get(); err != nil {
-		ch <- chan_ret_t{nil, err}
+		ch <- collectionResult{nil, err}
 		return
 	}
 
@@ -447,13 +446,13 @@ func swap(ch chan chan_ret_t) {
 		},
 	)
 
-	ch <- chan_ret_t{[]*influxClient.Point{series}, nil}
+	ch <- collectionResult{[]*influx.Point{series}, nil}
 }
 
-func uptime(ch chan chan_ret_t) {
+func uptime(ch chan collectionResult) {
 	uptime := sigar.Uptime{}
 	if err := uptime.Get(); err != nil {
-		ch <- chan_ret_t{nil, err}
+		ch <- collectionResult{nil, err}
 		return
 	}
 
@@ -465,13 +464,13 @@ func uptime(ch chan chan_ret_t) {
 		},
 	)
 
-	ch <- chan_ret_t{[]*influxClient.Point{serie}, nil}
+	ch <- collectionResult{[]*influx.Point{serie}, nil}
 }
 
-func load(ch chan chan_ret_t) {
+func load(ch chan collectionResult) {
 	load := sigar.LoadAverage{}
 	if err := load.Get(); err != nil {
-		ch <- chan_ret_t{nil, err}
+		ch <- collectionResult{nil, err}
 		return
 	}
 
@@ -485,18 +484,18 @@ func load(ch chan chan_ret_t) {
 		},
 	)
 
-	ch <- chan_ret_t{[]*influxClient.Point{series}, nil}
+	ch <- collectionResult{[]*influx.Point{series}, nil}
 }
 
-func network(ch chan chan_ret_t) {
+func network(ch chan collectionResult) {
 	fi, err := os.Open("/proc/net/dev")
 	if err != nil {
-		ch <- chan_ret_t{nil, err}
+		ch <- collectionResult{nil, err}
 		return
 	}
 	defer fi.Close()
 
-	var series []*influxClient.Point
+	var series []*influx.Point
 
 	cols := []string{"recv_bytes", "recv_packets", "recv_errs", "recv_drop",
 		"recv_fifo", "recv_frame", "recv_compressed",
@@ -517,7 +516,7 @@ func network(ch chan chan_ret_t) {
 		line := scanner.Text()
 		tmp := strings.Split(line, ":")
 		if len(tmp) < 2 {
-			ch <- chan_ret_t{nil, nil}
+			ch <- collectionResult{nil, nil}
 			return
 		}
 
@@ -539,23 +538,23 @@ func network(ch chan chan_ret_t) {
 			fields,
 		)
 
-		if serie = DiffFromLast(serie); serie != nil {
+		if serie = diffFromLast(serie); serie != nil {
 			series = append(series, serie)
 		}
 	}
 
-	ch <- chan_ret_t{series, nil}
+	ch <- collectionResult{series, nil}
 }
 
-func disks(ch chan chan_ret_t) {
+func disks(ch chan collectionResult) {
 	fi, err := os.Open("/proc/diskstats")
 	if err != nil {
-		ch <- chan_ret_t{nil, err}
+		ch <- collectionResult{nil, err}
 		return
 	}
 	defer fi.Close()
 
-	var series []*influxClient.Point
+	var series []*influx.Point
 
 	cols := []string{"read_ios", "read_merges", "read_sectors", "read_ticks",
 		"write_ios", "write_merges", "write_sectors", "write_ticks",
@@ -566,7 +565,7 @@ func disks(ch chan chan_ret_t) {
 	for scanner.Scan() {
 		tmp := strings.Fields(scanner.Text())
 		if len(tmp) < 14 {
-			ch <- chan_ret_t{nil, nil}
+			ch <- collectionResult{nil, nil}
 			return
 		}
 
@@ -587,23 +586,23 @@ func disks(ch chan chan_ret_t) {
 			fields,
 		)
 
-		if point = DiffFromLast(point); point != nil {
+		if point = diffFromLast(point); point != nil {
 			series = append(series, point)
 		}
 	}
 
-	ch <- chan_ret_t{series, nil}
+	ch <- collectionResult{series, nil}
 }
 
-func mounts(ch chan chan_ret_t) {
+func mounts(ch chan collectionResult) {
 	fi, err := os.Open("/proc/mounts")
 	if err != nil {
-		ch <- chan_ret_t{nil, err}
+		ch <- collectionResult{nil, err}
 		return
 	}
 	defer fi.Close()
 
-	var series []*influxClient.Point
+	var series []*influx.Point
 
 	// Exclude virtual & system fstype
 	sysfs := []string{"binfmt_misc", "cgroup", "configfs", "debugfs",
@@ -621,7 +620,7 @@ func mounts(ch chan chan_ret_t) {
 
 			err := syscall.Statfs(tmp[1], &fs)
 			if err != nil {
-				ch <- chan_ret_t{nil, err}
+				ch <- collectionResult{nil, err}
 				return
 			}
 
@@ -637,13 +636,13 @@ func mounts(ch chan chan_ret_t) {
 				},
 			)
 
-			if serie = DiffFromLast(serie); serie != nil {
+			if serie = diffFromLast(serie); serie != nil {
 				series = append(series, serie)
 			}
 		}
 	}
 
-	ch <- chan_ret_t{series, nil}
+	ch <- collectionResult{series, nil}
 }
 
 func getFqdn() string {
@@ -651,7 +650,7 @@ func getFqdn() string {
 	// want the FQDN, and this is the easiest way to get it.
 	fqdn, err := exec.Command("hostname", "-f").Output()
 
-	// Fallback on Unqualifed name
+	// Fallback to unqualifed name
 	if err != nil {
 		hostname, _ := os.Hostname()
 		return hostname
@@ -670,11 +669,11 @@ func stringInSlice(a string, list []string) bool {
 	return false
 }
 
-func newPoint(name string, tags map[string]string, fields map[string]interface{}) *influxClient.Point {
+func newPoint(name string, tags map[string]string, fields map[string]interface{}) *influx.Point {
 
 	tags["fqdn"] = getFqdn()
 
-	point, err := influxClient.NewPoint(
+	point, err := influx.NewPoint(
 		name,
 		tags,
 		fields,
@@ -682,7 +681,7 @@ func newPoint(name string, tags map[string]string, fields map[string]interface{}
 	)
 
 	if err != nil {
-		log.WithError(err).Error("Cannot create new point")
+		log.WithError(err).Error("Cannot create new point.")
 	}
 
 	return point

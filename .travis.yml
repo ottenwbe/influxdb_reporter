@@ -5,7 +5,10 @@ go:
 sudo: false
 
 install:
-  - go get -v -t ./...
+  - go get -v ./...
+  - go get -u github.com/golang/lint/golint
 
 script:
-  - go test ./...
+  - for d in $(go list ./... | grep -v vendor); do go vet $d; done
+  - for d in $(go list ./... | grep -v vendor); do golint $d; done
+  - for d in $(go list ./... | grep -v vendor); do go test $d; done

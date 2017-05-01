@@ -1,6 +1,4 @@
 /*
-MIT License
-
 Copyright (c) 2017 Beate Ottenwälder
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -45,24 +43,24 @@ func TestSimple(t *testing.T) {
 		logrus.Fatal("Cannot create point.")
 	}
 
-	if DiffFromLast(serie1) != nil {
+	if diffFromLast(serie1) != nil {
 		t.Error("First time, initialization can't return a valid serie")
 	}
 
 	if serie1.Name() != "test_init" {
-		t.Error("DiffFromLast shouldn't modify serie name")
+		t.Error("diffFromLast shouldn't modify serie name")
 	}
 
 	if len(serie1.Tags()) != 1 {
-		t.Error("DiffFromLast shouldn't modify tag number")
+		t.Error("diffFromLast shouldn't modify tag number")
 	}
 
 	if _, ok := serie1.Tags()["tag0"]; !ok {
-		t.Error("DiffFromLast shouldn't modify tag name")
+		t.Error("diffFromLast shouldn't modify tag name")
 	}
 
 	if v := serie1.Tags()["tag0"]; v != "val0" {
-		t.Error("DiffFromLast shouldn't modify tag value")
+		t.Error("diffFromLast shouldn't modify tag value")
 	}
 
 	serie2, _ := influxClient.NewPoint(
@@ -72,7 +70,7 @@ func TestSimple(t *testing.T) {
 		time.Now(),
 	)
 
-	if DiffFromLast(serie2) != nil {
+	if diffFromLast(serie2) != nil {
 		t.Error("Another serie (different serie name and tags) have to be initialized too")
 	}
 
@@ -90,7 +88,7 @@ func TestSimple(t *testing.T) {
 		time.Now(),
 	)
 
-	if DiffFromLast(serie1) == nil || DiffFromLast(serie2) == nil {
+	if diffFromLast(serie1) == nil || diffFromLast(serie2) == nil {
 		t.Error("Initialized diff serie shouldn't return nil")
 	}
 
@@ -127,14 +125,14 @@ func TestRandom(t *testing.T) {
 
 	serie = fillPoints(serie, &newPts, size)
 
-	DiffFromLast(serie)
+	diffFromLast(serie)
 
 	for h := 0; h < rand.Intn(50)+10; h++ {
 		oldPts = newPts
 		newPts = make(map[string]interface{})
 
 		serie = fillPoints(serie, &newPts, size)
-		DiffFromLast(serie)
+		diffFromLast(serie)
 
 		// Compare
 		for i := 0; i < size; i++ {
@@ -145,8 +143,8 @@ func TestRandom(t *testing.T) {
 			}
 
 			if fields[k] != int64((newPts)[k].(int)-(oldPts)[k].(int)) {
-				t.Error(fmt.Sprintf("Iteration %d; point %d: expected %d, got %d", h, k,
-					(newPts)[k].(int)-(oldPts)[k].(int), fields[k]))
+				t.Errorf("Iteration %d; point %s: expected %d, got %d", h, k,
+					(newPts)[k].(int)-(oldPts)[k].(int), fields[k])
 			}
 		}
 	}

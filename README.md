@@ -24,8 +24,8 @@ Moreover, we assume that `$GOPATH/bin` is in your `PATH`.
 1. Now you can execute the application by typing: 
 
     ```bash    
-    golook --help
-
+    influxdb_reporter --help
+    ```    
 ## Usage sample
 
 To display all metrics once without sending them to a server :
